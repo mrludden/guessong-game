@@ -8,7 +8,8 @@ let stopRoomListener = null;
 let playerId = null;
 let ytPlayer = null;
 let ytReady = false;
-let loadedVideoId = null;
+let loadedVideoKey = null;
+let selectedVideo = null;
 let currentGame = null;
 const MAX_PLAYERS = 15;
 
@@ -43,22 +44,64 @@ async function requireFirebase() {
   if (!auth.currentUser) await signInGuest();
   playerId = auth.currentUser.uid;
 }
-function extractYouTubeId(value) {
-  const input = value.trim();
-  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+function renderSearchResults(items) {
+  const container = $("youtube-results");
+  container.replaceChildren();
+  if (!items.length) {
+    container.textContent = "No matching videos found.";
+    return;
+  }
+  for (const item of items) {
+    const videoId = item.id.videoId;
+    const snippet = item.snippet;
+    const row = document.createElement("article");
+    row.className = "youtube-result";
+    const thumb = document.createElement("img");
+    thumb.src = snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || "";
+    thumb.alt = "";
+    const details = document.createElement("div");
+    details.className = "youtube-result-details";
+    const title = document.createElement("strong");
+    title.textContent = snippet.title;
+    const channel = document.createElement("span");
+    channel.textContent = snippet.channelTitle;
+    const link = document.createElement("a");
+    link.href = "https://www.youtube.com/watch?v=" + encodeURIComponent(videoId);
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "View on YouTube";
+    const choose = document.createElement("button");
+    choose.className = "button secondary small-button";
+    choose.textContent = "Use this song";
+    choose.addEventListener("click", () => {
+      selectedVideo = {id:videoId, title:snippet.title, channel:snippet.channelTitle};
+      $("selected-song").textContent = snippet.title + " — " + snippet.channelTitle;
+      $("selected-song-card").classList.remove("hidden");
+      status("Song selected. Set the starting position, then press Play Next Song.");
+    });
+    details.append(title, channel, link, choose);
+    row.append(thumb, details);
+    container.append(row);
+  }
+}
+async function searchYouTube() {
+  const query = $("song-search").value.trim();
+  if (!query) throw new Error("Enter a song title and artist to search.");
+  if (!youtubeApiKey) throw new Error("Add a YouTube Data API key in firebase.js first.");
+  $("search-youtube").disabled = true;
+  $("youtube-results").textContent = "Searching YouTube…";
   try {
-    const url = new URL(input);
-    if (url.hostname === "youtu.be" || url.hostname.endsWith(".youtu.be")) {
-      return url.pathname.split("/").filter(Boolean)[0] || null;
-    }
-    if (url.hostname.includes("youtube.com")) {
-      if (url.searchParams.get("v")) return url.searchParams.get("v");
-      const parts = url.pathname.split("/").filter(Boolean);
-      const marker = parts.findIndex(part => ["embed", "shorts", "live"].includes(part));
-      if (marker >= 0) return parts[marker + 1] || null;
-    }
-  } catch (_) {}
-  return null;
+    const params = new URLSearchParams({
+      part:"snippet", type:"video", maxResults:"10", q:query,
+      videoEmbeddable:"true", key:youtubeApiKey
+    });
+    const response = await fetch("https://www.googleapis.com/youtube/v3/search?" + params);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "YouTube search failed.");
+    renderSearchResults(data.items || []);
+  } finally {
+    $("search-youtube").disabled = false;
+  }
 }
 function createYouTubePlayer() {
   if (ytPlayer || !window.YT || !window.YT.Player) return;
@@ -106,10 +149,12 @@ function loadYouTubeAPI() {
 }
 function cueCurrentVideo() {
   if (!ytReady || !ytPlayer || !currentGame?.currentVideoId) return;
-  if (loadedVideoId === currentGame.currentVideoId) return;
-  loadedVideoId = currentGame.currentVideoId;
+  const offset = Math.max(0, Number(currentGame.playbackOffsetSeconds) || 0);
+  const videoKey = currentGame.currentVideoId + ":" + offset;
+  if (loadedVideoKey === videoKey) return;
+  loadedVideoKey = videoKey;
   $("start-listening").disabled = true;
-  ytPlayer.cueVideoById(currentGame.currentVideoId);
+  ytPlayer.cueVideoById({videoId:currentGame.currentVideoId, startSeconds:offset});
   $("playback-message").textContent = "Song is ready. Press Start listening when you're ready.";
 }
 function startLocalPlayback() {
@@ -122,8 +167,9 @@ function startLocalPlayback() {
     $("playback-message").textContent = "Waiting for the playback start time from the room.";
     return;
   }
+  const offset = Math.max(0, Number(currentGame.playbackOffsetSeconds) || 0);
   const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
-  ytPlayer.seekTo(elapsed, true);
+  ytPlayer.seekTo(offset + elapsed, true);
   ytPlayer.playVideo();
   $("playback-message").textContent = "Starting at the shared game time…";
 }
@@ -154,13 +200,15 @@ function watchRoom() {
     $("host-song-controls").classList.toggle("hidden", !isHost || phase === "lobby");
     $("player-waiting").classList.toggle("hidden", isHost || phase !== "lobby");
     $("playback-card").classList.toggle("hidden", phase !== "playing" || !currentGame.currentVideoId);
+    $("now-playing-title").textContent = currentGame.currentVideoTitle || "Selected song";
+    $("now-playing-channel").textContent = currentGame.currentVideoChannel || "";
     if (hostView) {
       if (document.activeElement !== $("topic")) $("topic").value = room.settings?.topic || "";
       $("clip-length").value = String(room.settings?.clipLength || 10);
       $("guess-time").value = String(room.settings?.guessTime || 45);
     }
     if (phase === "waiting-for-song") {
-      status(isHost ? "Add a YouTube link or video ID, then play the next song." : "Waiting for the host to choose a song.");
+      status(isHost ? "Search for a song, select a result, and play it when ready." : "Waiting for the host to choose a song.");
     }
     if (phase === "playing" && currentGame.currentVideoId) {
       loadYouTubeAPI();
@@ -223,22 +271,22 @@ async function saveSettings() {
 async function startGame() {
   await saveSettings();
   await update(ref(db, "rooms/" + currentRoom + "/game"), {phase:"waiting-for-song", round:1, startedAt:serverTimestamp()});
-  status("Game started. Add a YouTube link for the first song.");
+  status("Game started. Search for the first song.");
 }
 async function playNextSong() {
-  const videoId = extractYouTubeId($("youtube-url").value);
-  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-    throw new Error("Paste a valid YouTube video link or 11-character video ID.");
-  }
+  if (!selectedVideo) throw new Error("Search for a song and choose one of the results first.");
+  const offset = Math.max(0, Number($("start-position").value) || 0);
   const snapshot = await get(ref(db, "rooms/" + currentRoom + "/game"));
   const game = snapshot.val() || {};
   await update(ref(db, "rooms/" + currentRoom + "/game"), {
     phase:"playing",
     round:(Number(game.round) || 0) + (game.phase === "waiting-for-song" ? 0 : 1),
-    currentVideoId:videoId,
+    currentVideoId:selectedVideo.id,
+    currentVideoTitle:selectedVideo.title,
+    currentVideoChannel:selectedVideo.channel,
+    playbackOffsetSeconds:offset,
     playbackStartedAt:serverTimestamp()
   });
-  $("youtube-url").value = "";
   status("Song sent to the room. Each player should press Start listening.");
 }
 function run(action) {
@@ -251,12 +299,14 @@ $("join-room").addEventListener("click", () => run(joinRoom));
 $("save-settings").addEventListener("click", () => run(saveSettings));
 $("start-game").addEventListener("click", () => run(startGame));
 $("play-next-song").addEventListener("click", () => run(playNextSong));
+$("search-youtube").addEventListener("click", () => run(searchYouTube));
+$("song-search").addEventListener("keydown", event => {if(event.key === "Enter") run(searchYouTube);});
 $("start-listening").addEventListener("click", startLocalPlayback);
 $("copy-code").addEventListener("click", async () => {if(currentRoom){await navigator.clipboard.writeText(currentRoom);status("Room code copied.");}});
 $("leave-room").addEventListener("click", async () => {
   if (stopRoomListener) stopRoomListener();
   if (currentRoom && playerId) await update(ref(db, "rooms/" + currentRoom + "/players/" + playerId), {connected:false});
-  currentRoom=null;isHost=false;currentGame=null;loadedVideoId=null;show("home");status("");
+  currentRoom=null;isHost=false;currentGame=null;loadedVideoKey=null;selectedVideo=null;show("home");status("");
 });
 
 if (!firebaseConfigured) {
