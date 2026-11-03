@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101522">
   <title>Guessong — Music guessing game</title>
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <main class="shell">
@@ -90,8 +90,22 @@
       </div>
       <p id="status" class="status" role="status"></p>
     </section>
-    <footer>Guessong development prototype. <a href="https://www.apple.com/legal/internet-services/itunes/" target="_blank" rel="noopener">Apple Media Services Terms</a><small style="display:block;margin-top:6px">Version 0.1.0 · Build 2026-11-03</small></footer>
+    <footer>Guessong development prototype. <a href="https://www.apple.com/legal/internet-services/itunes/" target="_blank" rel="noopener">Apple Media Services Terms</a><small id="site-version" style="display:block;margin-top:6px">Version loading…</small></footer>
   </main>
-  <script type="module" src="app.js?v=3"></script>
+  <script>
+    fetch("./version.json?cache=" + Date.now(), { cache: "no-store" })
+      .then(response => {
+        if (!response.ok) throw new Error("Version file unavailable");
+        return response.json();
+      })
+      .then(data => {
+        document.getElementById("site-version").textContent =
+          "Build " + data.version + " · " + data.builtAt + " UTC";
+      })
+      .catch(() => {
+        document.getElementById("site-version").textContent = "Build version unavailable";
+      });
+  </script>
+  <script type="module" src="app.js?v=4"></script>
 </body>
 </html>
