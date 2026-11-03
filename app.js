@@ -6,6 +6,10 @@ let currentRoom = null;
 let isHost = false;
 let stopRoomListener = null;
 let playerId = null;
+let ytPlayer = null;
+let ytReady = false;
+let loadedVideoId = null;
+let currentGame = null;
 const MAX_PLAYERS = 15;
 
 function status(message, isError = false) {
@@ -27,7 +31,7 @@ function nameKey(name) {
   return encodeURIComponent(name.trim().toLowerCase()).replace(/\./g, "%2E");
 }
 async function claimName(roomCode, name) {
-  const claimRef = ref(db, `rooms/${roomCode}/nameClaims/${nameKey(name)}`);
+  const claimRef = ref(db, "rooms/" + roomCode + "/nameClaims/" + nameKey(name));
   const result = await runTransaction(claimRef, current => {
     if (current === null || current === playerId) return playerId;
     return;
@@ -39,15 +43,99 @@ async function requireFirebase() {
   if (!auth.currentUser) await signInGuest();
   playerId = auth.currentUser.uid;
 }
+function extractYouTubeId(value) {
+  const input = value.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+  try {
+    const url = new URL(input);
+    if (url.hostname === "youtu.be" || url.hostname.endsWith(".youtu.be")) {
+      return url.pathname.split("/").filter(Boolean)[0] || null;
+    }
+    if (url.hostname.includes("youtube.com")) {
+      if (url.searchParams.get("v")) return url.searchParams.get("v");
+      const parts = url.pathname.split("/").filter(Boolean);
+      const marker = parts.findIndex(part => ["embed", "shorts", "live"].includes(part));
+      if (marker >= 0) return parts[marker + 1] || null;
+    }
+  } catch (_) {}
+  return null;
+}
+function createYouTubePlayer() {
+  if (ytPlayer || !window.YT || !window.YT.Player) return;
+  ytPlayer = new YT.Player("youtube-player", {
+    width: "320",
+    height: "200",
+    playerVars: {playsinline: 1, controls: 1, rel: 0, origin: window.location.origin},
+    events: {
+      onReady: () => {
+        ytReady = true;
+        if (currentGame && currentGame.currentVideoId) cueCurrentVideo();
+      },
+      onStateChange: event => {
+        if (event.data === YT.PlayerState.PLAYING) $("playback-message").textContent = "Playback is running. If your audio is out of sync, press Start listening again.";
+        if (event.data === YT.PlayerState.BUFFERING) $("playback-message").textContent = "Buffering…";
+      },
+      onError: event => {
+        const messages = {
+          2: "That YouTube video ID is not valid.",
+          5: "This video cannot be played in the embedded player.",
+          100: "This video is unavailable or private.",
+          101: "The video owner does not allow embedded playback.",
+          150: "The video owner does not allow embedded playback.",
+          153: "YouTube could not verify the embedded player request. Try reloading the page."
+        };
+        $("playback-message").textContent = messages[event.data] || "YouTube playback error (" + event.data + ").";
+      },
+      onAutoplayBlocked: () => {
+        $("playback-message").textContent = "Your browser blocked playback. Press Start listening to begin.";
+      }
+    }
+  });
+}
+function loadYouTubeAPI() {
+  if (window.YT && window.YT.Player) {
+    createYouTubePlayer();
+    return;
+  }
+  if (document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) return;
+  window.onYouTubeIframeAPIReady = createYouTubePlayer;
+  const script = document.createElement("script");
+  script.src = "https://www.youtube.com/iframe_api";
+  document.head.appendChild(script);
+}
+function cueCurrentVideo() {
+  if (!ytReady || !ytPlayer || !currentGame?.currentVideoId) return;
+  if (loadedVideoId === currentGame.currentVideoId) return;
+  loadedVideoId = currentGame.currentVideoId;
+  ytPlayer.cueVideoById(currentGame.currentVideoId);
+  $("playback-message").textContent = "Song is ready. Press Start listening when you're ready.";
+}
+function startLocalPlayback() {
+  if (!ytReady || !ytPlayer || !currentGame?.currentVideoId) {
+    $("playback-message").textContent = "The YouTube player is still loading. Try again in a moment.";
+    return;
+  }
+  const startedAt = Number(currentGame.playbackStartedAt);
+  if (!startedAt) {
+    $("playback-message").textContent = "Waiting for the playback start time from the room.";
+    return;
+  }
+  const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
+  ytPlayer.seekTo(elapsed, true);
+  ytPlayer.playVideo();
+  $("playback-message").textContent = "Starting at the shared game time…";
+}
 function watchRoom() {
   if (stopRoomListener) stopRoomListener();
-  stopRoomListener = onValue(ref(db, `rooms/${currentRoom}`), snapshot => {
+  stopRoomListener = onValue(ref(db, "rooms/" + currentRoom), snapshot => {
     const room = snapshot.val();
     if (!room) { status("This room no longer exists.", true); show("home"); return; }
-    $("room-title").textContent = room.game?.phase === "lobby" ? "Waiting room" : "Game room";
+    currentGame = room.game || {};
+    const phase = currentGame.phase || "lobby";
+    $("room-title").textContent = phase === "lobby" ? "Waiting room" : "Game room";
     $("room-code-display").textContent = currentRoom;
     const players = Object.entries(room.players || {});
-    $("player-count").textContent = `${players.length} / ${MAX_PLAYERS}`;
+    $("player-count").textContent = players.length + " / " + MAX_PLAYERS;
     $("players").innerHTML = "";
     for (const [uid, player] of players) {
       const li = document.createElement("li");
@@ -56,17 +144,27 @@ function watchRoom() {
       const label = document.createElement("span");
       label.className = "host-label";
       label.textContent = uid === room.hostId ? "HOST" : "";
-      li.append(name,label); $("players").append(li);
+      li.append(name,label);
+      $("players").append(li);
     }
-    const hostView = isHost && room.game?.phase === "lobby";
+    const hostView = isHost && phase === "lobby";
     $("host-settings").classList.toggle("hidden", !hostView);
-    $("player-waiting").classList.toggle("hidden", isHost || room.game?.phase !== "lobby");
+    $("host-song-controls").classList.toggle("hidden", !isHost || phase === "lobby");
+    $("player-waiting").classList.toggle("hidden", isHost || phase !== "lobby");
+    $("playback-card").classList.toggle("hidden", phase !== "playing" || !currentGame.currentVideoId);
     if (hostView) {
-      $("topic").value = room.settings?.topic || "";
+      if (document.activeElement !== $("topic")) $("topic").value = room.settings?.topic || "";
       $("clip-length").value = String(room.settings?.clipLength || 10);
       $("guess-time").value = String(room.settings?.guessTime || 45);
     }
-    if (room.game?.phase !== "lobby") status("Game setup is saved. Song selection and synchronized playback are the next build stage.");
+    if (phase === "waiting-for-song") {
+      status(isHost ? "Add a YouTube link or video ID, then play the next song." : "Waiting for the host to choose a song.");
+    }
+    if (phase === "playing" && currentGame.currentVideoId) {
+      loadYouTubeAPI();
+      cueCurrentVideo();
+      $("playback-message").textContent = $("playback-message").textContent || "Press Start listening to join the song.";
+    }
   });
 }
 async function createRoom() {
@@ -74,7 +172,7 @@ async function createRoom() {
   const name = cleanName($("host-name").value);
   if (!name) throw new Error("Enter a nickname.");
   let code, existing;
-  do { code = makeCode(); existing = await get(ref(db, `rooms/${code}`)); } while (existing.exists());
+  do { code = makeCode(); existing = await get(ref(db, "rooms/" + code)); } while (existing.exists());
   const room = {
     hostId: playerId,
     createdAt: serverTimestamp(),
@@ -82,13 +180,13 @@ async function createRoom() {
     game: {phase:"lobby", round:0},
     players: {}
   };
-  await set(ref(db, `rooms/${code}`), room);
+  await set(ref(db, "rooms/" + code), room);
   await claimName(code, name);
-  await set(ref(db, `rooms/${code}/players/${playerId}`), {
+  await set(ref(db, "rooms/" + code + "/players/" + playerId), {
     name, nameKey:nameKey(name), joinedAt:serverTimestamp(), connected:true
   });
   currentRoom = code; isHost = true;
-  await onDisconnect(ref(db, `rooms/${code}/players/${playerId}/connected`)).set(false);
+  await onDisconnect(ref(db, "rooms/" + code + "/players/" + playerId + "/connected")).set(false);
   show("room"); watchRoom(); status("Room created. Share the code with your players.");
 }
 async function joinRoom() {
@@ -97,7 +195,7 @@ async function joinRoom() {
   const code = $("room-code").value.trim().toUpperCase();
   if (!name) throw new Error("Enter a nickname.");
   if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) throw new Error("Enter a valid six-character room code.");
-  const roomRef = ref(db, `rooms/${code}`);
+  const roomRef = ref(db, "rooms/" + code);
   const snapshot = await get(roomRef);
   if (!snapshot.exists()) throw new Error("Room not found. Check the code.");
   const room = snapshot.val();
@@ -105,25 +203,41 @@ async function joinRoom() {
   if (!room.players?.[playerId] && players.length >= MAX_PLAYERS) throw new Error("This room is full (15 players maximum).");
   if (room.game?.phase !== "lobby" && !room.players?.[playerId]) throw new Error("This game has already started.");
   await claimName(code, name);
-  await set(ref(db, `rooms/${code}/players/${playerId}`), {
+  await set(ref(db, "rooms/" + code + "/players/" + playerId), {
     name, nameKey:nameKey(name), joinedAt:serverTimestamp(), connected:true
   });
-  await onDisconnect(ref(db, `rooms/${code}/players/${playerId}/connected`)).set(false);
+  await onDisconnect(ref(db, "rooms/" + code + "/players/" + playerId + "/connected")).set(false);
   currentRoom = code; isHost = room.hostId === playerId;
   show("room"); watchRoom(); status("You're in. Waiting for the host.");
 }
 async function saveSettings() {
   const topic = $("topic").value.trim();
   if (!topic) throw new Error("Choose a topic before starting.");
-  await update(ref(db, `rooms/${currentRoom}/settings`), {
+  await update(ref(db, "rooms/" + currentRoom + "/settings"), {
     topic, clipLength:Number($("clip-length").value), guessTime:Number($("guess-time").value)
   });
   status("Game settings saved.");
 }
 async function startGame() {
   await saveSettings();
-  await update(ref(db, `rooms/${currentRoom}/game`), {phase:"song-selection", round:1, startedAt:serverTimestamp()});
-  status("Game started. Song selection is the next feature to add.");
+  await update(ref(db, "rooms/" + currentRoom + "/game"), {phase:"waiting-for-song", round:1, startedAt:serverTimestamp()});
+  status("Game started. Add a YouTube link for the first song.");
+}
+async function playNextSong() {
+  const videoId = extractYouTubeId($("youtube-url").value);
+  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+    throw new Error("Paste a valid YouTube video link or 11-character video ID.");
+  }
+  const snapshot = await get(ref(db, "rooms/" + currentRoom + "/game"));
+  const game = snapshot.val() || {};
+  await update(ref(db, "rooms/" + currentRoom + "/game"), {
+    phase:"playing",
+    round:(Number(game.round) || 0) + (game.phase === "waiting-for-song" ? 0 : 1),
+    currentVideoId:videoId,
+    playbackStartedAt:serverTimestamp()
+  });
+  $("youtube-url").value = "";
+  status("Song sent to the room. Each player should press Start listening.");
 }
 function run(action) {
   action().catch(error => status(error.message || "Something went wrong.", true));
@@ -134,11 +248,13 @@ $("create-room").addEventListener("click", () => run(createRoom));
 $("join-room").addEventListener("click", () => run(joinRoom));
 $("save-settings").addEventListener("click", () => run(saveSettings));
 $("start-game").addEventListener("click", () => run(startGame));
+$("play-next-song").addEventListener("click", () => run(playNextSong));
+$("start-listening").addEventListener("click", startLocalPlayback);
 $("copy-code").addEventListener("click", async () => {if(currentRoom){await navigator.clipboard.writeText(currentRoom);status("Room code copied.");}});
 $("leave-room").addEventListener("click", async () => {
   if (stopRoomListener) stopRoomListener();
-  if (currentRoom && playerId) await update(ref(db, `rooms/${currentRoom}/players/${playerId}`), {connected:false});
-  currentRoom=null;isHost=false;show("home");status("");
+  if (currentRoom && playerId) await update(ref(db, "rooms/" + currentRoom + "/players/" + playerId), {connected:false});
+  currentRoom=null;isHost=false;currentGame=null;loadedVideoId=null;show("home");status("");
 });
 
 if (!firebaseConfigured) {
