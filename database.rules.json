@@ -6,6 +6,13 @@
       "$roomId": {
         ".read": "auth != null",
         ".write": "auth != null && (!data.exists() ? newData.child('hostId').val() === auth.uid : data.child('hostId').val() === auth.uid)",
+        "nameClaims": {
+          "$nameKey": {
+            ".read": "auth != null",
+            ".write": "auth != null && (!data.exists() || data.val() === auth.uid)",
+            ".validate": "newData.isString()"
+          }
+        },
         "players": {
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).exists()",
