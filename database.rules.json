@@ -15,8 +15,9 @@
         },
         "players": {
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).exists()",
-            ".read": "auth != null && root.child('rooms').child($roomId).exists()"
+            ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).child('nameClaims').child(newData.child('nameKey').val()).val() === auth.uid",
+            ".read": "auth != null && root.child('rooms').child($roomId).exists()",
+            ".validate": "newData.hasChildren(['name', 'nameKey']) && newData.child('name').isString() && newData.child('nameKey').isString()"
           }
         }
       }
