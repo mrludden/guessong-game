@@ -42,24 +42,50 @@ async function requireFirebase() {
   if (!auth.currentUser) await signInGuest();
   playerId = auth.currentUser.uid;
 }
-function validatePreviewUrl(value) {
-  let url;
-  try { url = new URL(value.trim()); } catch { throw new Error("Paste a valid Spotify preview URL."); }
-  if (url.protocol !== "https:" || url.hostname !== "p.scdn.co" || !url.pathname.startsWith("/mp3-preview/")) {
-    throw new Error("Use a Spotify preview link beginning https://p.scdn.co/mp3-preview/.");
+async function searchSongs() {
+  const term = $("song-search").value.trim();
+  if (term.length < 2) throw new Error("Enter at least two characters to search.");
+  const results = $("song-results");
+  results.innerHTML = "<p class='muted small'>Searching Apple’s music catalog…</p>";
+  const url = "https://itunes.apple.com/search?term=" + encodeURIComponent(term) + "&entity=song&limit=25";
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("The music catalog search failed. Try again.");
+  const data = await response.json();
+  const tracks = (data.results || []).filter(track => track.previewUrl && track.trackName && track.artistName);
+  results.innerHTML = "";
+  if (!tracks.length) {
+    results.textContent = "No songs with playable previews were found. Try another search.";
+    return;
   }
-  return url.href;
-}
-function selectSong() {
-  const title = $("song-title").value.trim();
-  const artist = $("song-artist").value.trim();
-  const previewUrl = validatePreviewUrl($("preview-url").value);
-  if (!title) throw new Error("Enter the song title.");
-  if (!artist) throw new Error("Enter the artist.");
-  selectedSong = {title, artist, previewUrl};
-  $("selected-song").textContent = title + " — " + artist;
-  $("selected-song-card").classList.remove("hidden");
-  status("Song selected. Set the starting position, then press Play Next Song.");
+  for (const track of tracks) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "song-result";
+    const art = document.createElement("img");
+    art.src = track.artworkUrl60 || "";
+    art.alt = "";
+    const details = document.createElement("span");
+    details.className = "song-result-details";
+    const title = document.createElement("strong");
+    title.textContent = track.trackName;
+    const artist = document.createElement("span");
+    artist.textContent = track.artistName + (track.collectionName ? " · " + track.collectionName : "");
+    details.append(title, artist);
+    const play = document.createElement("span");
+    play.className = "song-result-action";
+    play.textContent = "Select";
+    item.append(art, details, play);
+    item.addEventListener("click", () => {
+      selectedSong = {title:track.trackName, artist:track.artistName, previewUrl:track.previewUrl};
+      $("selected-song").textContent = track.trackName + " — " + track.artistName;
+      $("selected-song-card").classList.remove("hidden");
+      [...results.querySelectorAll(".song-result")].forEach(button => button.classList.remove("selected"));
+      item.classList.add("selected");
+      status("Song selected. Set the starting position, then press Play Next Song.");
+    });
+    results.append(item);
+  }
+  status(tracks.length + " songs with previews found. Select one.");
 }
 function cueCurrentAudio() {
   const audio = $("audio-player");
@@ -211,7 +237,7 @@ async function startGame() {
   status("Game started. Search for the first song.");
 }
 async function playNextSong() {
-  if (!selectedSong) throw new Error("Enter a song and a valid Spotify preview URL first.");
+  if (!selectedSong) throw new Error("Search for a song and select a result first.");
   const offset = Math.max(0, Number($("start-position").value) || 0);
   const snapshot = await get(ref(db, "rooms/" + currentRoom + "/game"));
   const game = snapshot.val() || {};
@@ -234,7 +260,8 @@ $("join-room").addEventListener("click", () => run(joinRoom));
 $("save-settings").addEventListener("click", () => run(saveSettings));
 $("start-game").addEventListener("click", () => run(startGame));
 $("play-next-song").addEventListener("click", () => run(playNextSong));
-$("select-song").addEventListener("click", () => run(selectSong));
+$("search-songs").addEventListener("click", () => run(searchSongs));
+$("song-search").addEventListener("keydown", event => { if (event.key === "Enter") run(searchSongs); });
 $("start-listening").addEventListener("click", startLocalPlayback);
 $("copy-code").addEventListener("click", async () => {if(currentRoom){await navigator.clipboard.writeText(currentRoom);status("Room code copied.");}});
 $("leave-room").addEventListener("click", async () => {
