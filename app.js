@@ -1,4 +1,4 @@
-import { auth, db, firebaseConfigured, signInGuest } from "./firebase.js";
+import { auth, db, firebaseConfigured, signInGuest, youtubeApiKey } from "./firebase.js";
 import { ref, set, get, update, onValue, onDisconnect, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
 
 const $ = id => document.getElementById(id);
@@ -73,12 +73,28 @@ function renderSearchResults(items) {
     const choose = document.createElement("button");
     choose.className = "button secondary small-button";
     choose.textContent = "Use this song";
-    choose.addEventListener("click", () => {
-      selectedVideo = {id:videoId, title:snippet.title, channel:snippet.channelTitle};
-      $("selected-song").textContent = snippet.title + " — " + snippet.channelTitle;
-      $("selected-song-card").classList.remove("hidden");
-      status("Song selected. Set the starting position, then press Play Next Song.");
-    });
+    choose.addEventListener("click", () => run(async () => {
+      choose.disabled = true;
+      choose.textContent = "Checking…";
+      try {
+        const params = new URLSearchParams({part:"status", id:videoId, key:youtubeApiKey});
+        const response = await fetch("https://www.googleapis.com/youtube/v3/videos?" + params);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || "Could not check this video's settings.");
+        const video = data.items?.[0];
+        if (!video) throw new Error("YouTube did not return details for that video.");
+        if (video.status?.madeForKids === true) {
+          throw new Error("This video is marked Made for Kids, so Guessong won't embed it.");
+        }
+        selectedVideo = {id:videoId, title:snippet.title, channel:snippet.channelTitle};
+        $("selected-song").textContent = snippet.title + " — " + snippet.channelTitle;
+        $("selected-song-card").classList.remove("hidden");
+        status("Song selected. Set the starting position, then press Play Next Song.");
+      } finally {
+        choose.disabled = false;
+        choose.textContent = "Use this song";
+      }
+    }));
     details.append(title, channel, link, choose);
     row.append(thumb, details);
     container.append(row);
