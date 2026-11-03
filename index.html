@@ -57,20 +57,30 @@
       </div>
       <div id="host-song-controls" class="settings-card hidden">
         <p class="eyebrow">HOST CONTROLS</p>
-        <label>YouTube video link or ID<input id="youtube-url" maxlength="300" placeholder="Paste a YouTube link"></label>
+        <label>Search by song title and artist<input id="song-search" maxlength="160" placeholder="e.g. Dreams Fleetwood Mac"></label>
+        <button id="search-youtube" class="button secondary full">Search YouTube</button>
+        <p class="muted small">Search results are provided by YouTube. Choose the matching recording, not just the matching song title.</p>
+        <div id="youtube-results" class="youtube-results" aria-live="polite"></div>
+        <div id="selected-song-card" class="selected-song hidden">
+          <span class="muted small">SELECTED SONG</span>
+          <strong id="selected-song"></strong>
+          <label>Start at (seconds)<input id="start-position" type="number" min="0" max="3600" step="1" value="0"></label>
+        </div>
         <button id="play-next-song" class="button primary full">Play Next Song</button>
-        <p class="muted small">The video will load for everyone in the room. Players start their own embedded player to join playback.</p>
+        <p class="muted small">The YouTube player remains visible below the game area and must stay at least 200 × 200 pixels. Each player starts their own playback.</p>
       </div>
       <div id="player-waiting" class="waiting-card hidden"><span class="pulse"></span> Waiting for the host to start the game…</div>
       <div id="playback-card" class="playback-card hidden">
         <div class="section-heading"><h2>Now playing</h2><span class="muted small">YouTube</span></div>
+        <h3 id="now-playing-title" class="now-playing-title">Selected song</h3>
+        <p id="now-playing-channel" class="muted small"></p>
         <div id="youtube-player" aria-label="YouTube embedded player"></div>
         <p id="playback-message" class="muted small">Press Start listening to join the song.</p>
         <button id="start-listening" class="button primary full" disabled>Loading player…</button>
       </div>
       <p id="status" class="status" role="status"></p>
     </section>
-    <footer>Built for friends, classrooms, and music fans.</footer>
+    <footer>Built for friends, classrooms, and music fans. <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">YouTube Terms</a> · <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></footer>
   </main>
   <script type="module" src="app.js"></script>
 </body>
