@@ -42,6 +42,52 @@ async function requireFirebase() {
   if (!auth.currentUser) await signInGuest();
   playerId = auth.currentUser.uid;
 }
+async function searchTestSongs() {
+  const term = $("test-song-search").value.trim();
+  if (term.length < 2) throw new Error("Enter at least two characters to search.");
+  const results = $("test-song-results");
+  $("test-song-status").textContent = "Searching Apple’s music catalog…";
+  results.innerHTML = "";
+  const url = "https://itunes.apple.com/search?term=" + encodeURIComponent(term) + "&entity=song&limit=25";
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("The music catalog search failed. Try again.");
+  const data = await response.json();
+  const tracks = (data.results || []).filter(track => track.previewUrl && track.trackName && track.artistName);
+  if (!tracks.length) {
+    $("test-song-status").textContent = "No songs with playable previews were found. Try another search.";
+    return;
+  }
+  for (const track of tracks) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "song-result";
+    const art = document.createElement("img");
+    art.src = track.artworkUrl60 || "";
+    art.alt = "";
+    const details = document.createElement("span");
+    details.className = "song-result-details";
+    const title = document.createElement("strong");
+    title.textContent = track.trackName;
+    const artist = document.createElement("span");
+    artist.textContent = track.artistName + (track.collectionName ? " · " + track.collectionName : "");
+    details.append(title, artist);
+    const action = document.createElement("span");
+    action.className = "song-result-action";
+    action.textContent = "Preview";
+    item.append(art, details, action);
+    item.addEventListener("click", () => {
+      const audio = $("test-audio-player");
+      audio.pause();
+      audio.src = track.previewUrl;
+      audio.load();
+      [...results.querySelectorAll(".song-result")].forEach(button => button.classList.remove("selected"));
+      item.classList.add("selected");
+      $("test-song-status").textContent = "Selected: " + track.trackName + " — " + track.artistName + ". Press play below.";
+    });
+    results.append(item);
+  }
+  $("test-song-status").textContent = tracks.length + " previewable songs found. Select one to load its preview.";
+}
 async function searchSongs() {
   const term = $("song-search").value.trim();
   if (term.length < 2) throw new Error("Enter at least two characters to search.");
@@ -253,6 +299,19 @@ async function playNextSong() {
 function run(action) {
   action().catch(error => status(error.message || "Something went wrong.", true));
 }
+$("show-song-test").addEventListener("click", () => {
+  $("song-test").classList.toggle("hidden");
+  $("create-form").classList.add("hidden");
+  $("join-form").classList.add("hidden");
+});
+$("test-search-songs").addEventListener("click", () => {
+  searchTestSongs().catch(error => $("test-song-status").textContent = error.message || "Search failed.");
+});
+$("test-song-search").addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    searchTestSongs().catch(error => $("test-song-status").textContent = error.message || "Search failed.");
+  }
+});
 $("show-create").addEventListener("click", () => {$("create-form").classList.remove("hidden");$("join-form").classList.add("hidden");});
 $("show-join").addEventListener("click", () => {$("join-form").classList.remove("hidden");$("create-form").classList.add("hidden");});
 $("create-room").addEventListener("click", () => run(createRoom));
