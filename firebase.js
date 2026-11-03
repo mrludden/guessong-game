@@ -15,6 +15,9 @@ const firebaseConfig = {
   measurementId: "G-G894QHPYD3"
 };
 
+// Restrict this key to your GitHub Pages domain and the YouTube Data API v3 in Google Cloud.
+export const youtubeApiKey = ""; // Add your YouTube Data API key here.
+
 export const firebaseConfigured = true;
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
