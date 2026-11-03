@@ -72,6 +72,7 @@ function createYouTubePlayer() {
         if (currentGame && currentGame.currentVideoId) cueCurrentVideo();
       },
       onStateChange: event => {
+        if (event.data === YT.PlayerState.CUED) $("start-listening").disabled = false;
         if (event.data === YT.PlayerState.PLAYING) $("playback-message").textContent = "Playback is running. If your audio is out of sync, press Start listening again.";
         if (event.data === YT.PlayerState.BUFFERING) $("playback-message").textContent = "Buffering…";
       },
@@ -107,6 +108,7 @@ function cueCurrentVideo() {
   if (!ytReady || !ytPlayer || !currentGame?.currentVideoId) return;
   if (loadedVideoId === currentGame.currentVideoId) return;
   loadedVideoId = currentGame.currentVideoId;
+  $("start-listening").disabled = true;
   ytPlayer.cueVideoById(currentGame.currentVideoId);
   $("playback-message").textContent = "Song is ready. Press Start listening when you're ready.";
 }
