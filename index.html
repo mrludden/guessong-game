@@ -20,6 +20,16 @@
       <div class="home-actions">
         <button id="show-create" class="button primary">Create a room</button>
         <button id="show-join" class="button secondary">Join a room</button>
+        <button id="show-song-test" class="button secondary">Test song search</button>
+      </div>
+      <div id="song-test" class="form-card hidden">
+        <h2>Test song search</h2>
+        <p class="muted small">Search the Apple music catalog and play a preview without creating a room.</p>
+        <label>Song or artist<input id="test-song-search" maxlength="120" placeholder="e.g. Taylor Swift or Anti-Hero"></label>
+        <button id="test-search-songs" class="button secondary full">Search songs</button>
+        <div id="test-song-results" class="song-results" aria-live="polite"></div>
+        <audio id="test-audio-player" controls preload="none"></audio>
+        <p id="test-song-status" class="muted small" role="status"></p>
       </div>
       <div id="create-form" class="form-card hidden">
         <h2>Create your room</h2>
