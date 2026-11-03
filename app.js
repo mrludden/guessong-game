@@ -166,7 +166,7 @@ function loadYouTubeAPI() {
 function cueCurrentVideo() {
   if (!ytReady || !ytPlayer || !currentGame?.currentVideoId) return;
   const offset = Math.max(0, Number(currentGame.playbackOffsetSeconds) || 0);
-  const videoKey = currentGame.currentVideoId + ":" + offset;
+  const videoKey = currentGame.currentVideoId + ":" + offset + ":" + (currentGame.round || 0);
   if (loadedVideoKey === videoKey) return;
   loadedVideoKey = videoKey;
   $("start-listening").disabled = true;
