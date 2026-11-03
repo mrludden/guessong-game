@@ -55,7 +55,19 @@
         <button id="save-settings" class="button secondary full">Save settings</button>
         <button id="start-game" class="button primary full">Start game</button>
       </div>
+      <div id="host-song-controls" class="settings-card hidden">
+        <p class="eyebrow">HOST CONTROLS</p>
+        <label>YouTube video link or ID<input id="youtube-url" maxlength="300" placeholder="Paste a YouTube link"></label>
+        <button id="play-next-song" class="button primary full">Play Next Song</button>
+        <p class="muted small">The video will load for everyone in the room. Players start their own embedded player to join playback.</p>
+      </div>
       <div id="player-waiting" class="waiting-card hidden"><span class="pulse"></span> Waiting for the host to start the game…</div>
+      <div id="playback-card" class="playback-card hidden">
+        <div class="section-heading"><h2>Now playing</h2><span class="muted small">YouTube</span></div>
+        <div id="youtube-player" aria-label="YouTube embedded player"></div>
+        <p id="playback-message" class="muted small">Press Start listening to join the song.</p>
+        <button id="start-listening" class="button primary full">Start listening</button>
+      </div>
       <p id="status" class="status" role="status"></p>
     </section>
     <footer>Built for friends, classrooms, and music fans.</footer>
