@@ -24,7 +24,7 @@ function cleanName(value) {
   return value.trim().replace(/[<>]/g, "").slice(0,18);
 }
 function nameKey(name) {
-  return encodeURIComponent(name.trim().toLowerCase()).replace(/\\./g, "%2E");
+  return encodeURIComponent(name.trim().toLowerCase()).replace(/\./g, "%2E");
 }
 async function claimName(roomCode, name) {
   const claimRef = ref(db, `rooms/${roomCode}/nameClaims/${nameKey(name)}`);
@@ -80,10 +80,13 @@ async function createRoom() {
     createdAt: serverTimestamp(),
     settings: {topic:"", clipLength:10, guessTime:45},
     game: {phase:"lobby", round:0},
-    players: {[playerId]: {name, joinedAt:serverTimestamp(), connected:true}}
+    players: {}
   };
   await set(ref(db, `rooms/${code}`), room);
   await claimName(code, name);
+  await set(ref(db, `rooms/${code}/players/${playerId}`), {
+    name, nameKey:nameKey(name), joinedAt:serverTimestamp(), connected:true
+  });
   currentRoom = code; isHost = true;
   await onDisconnect(ref(db, `rooms/${code}/players/${playerId}/connected`)).set(false);
   show("room"); watchRoom(); status("Room created. Share the code with your players.");
@@ -102,7 +105,9 @@ async function joinRoom() {
   if (!room.players?.[playerId] && players.length >= MAX_PLAYERS) throw new Error("This room is full (15 players maximum).");
   if (room.game?.phase !== "lobby" && !room.players?.[playerId]) throw new Error("This game has already started.");
   await claimName(code, name);
-  await set(ref(db, `rooms/${code}/players/${playerId}`), {name, joinedAt:serverTimestamp(), connected:true});
+  await set(ref(db, `rooms/${code}/players/${playerId}`), {
+    name, nameKey:nameKey(name), joinedAt:serverTimestamp(), connected:true
+  });
   await onDisconnect(ref(db, `rooms/${code}/players/${playerId}/connected`)).set(false);
   currentRoom = code; isHost = room.hostId === playerId;
   show("room"); watchRoom(); status("You're in. Waiting for the host.");
