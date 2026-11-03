@@ -32,7 +32,7 @@ async function claimName(roomCode, name) {
     if (current === null || current === playerId) return playerId;
     return;
   });
-  if (!result.committed) throw new Error("That name is already being used in this room. Choose another nickname.");
+  if (!result.committed) throw new Error("Another player is already using this username.");
 }
 async function requireFirebase() {
   if (!firebaseConfigured) throw new Error("Add your Firebase web app settings in firebase.js first.");
