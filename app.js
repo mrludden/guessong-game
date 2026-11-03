@@ -219,8 +219,6 @@ async function playNextSong() {
     phase:"playing",
     round:(Number(game.round) || 0) + (game.phase === "waiting-for-song" ? 0 : 1),
     currentAudioUrl:selectedSong.previewUrl,
-    currentSongTitle:selectedSong.title,
-    currentSongArtist:selectedSong.artist,
     playbackOffsetSeconds:offset,
     playbackStartedAt:serverTimestamp()
   });
