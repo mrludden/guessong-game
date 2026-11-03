@@ -1,5 +1,5 @@
 import { auth, db, firebaseConfigured, signInGuest } from "./firebase.js";
-import { ref, set, get, update, onValue, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+import { ref, set, get, update, onValue, onDisconnect, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
 
 const $ = id => document.getElementById(id);
 let currentRoom = null;
@@ -22,6 +22,17 @@ function makeCode() {
 }
 function cleanName(value) {
   return value.trim().replace(/[<>]/g, "").slice(0,18);
+}
+function nameKey(name) {
+  return encodeURIComponent(name.trim().toLowerCase()).replace(/\\./g, "%2E");
+}
+async function claimName(roomCode, name) {
+  const claimRef = ref(db, `rooms/${roomCode}/nameClaims/${nameKey(name)}`);
+  const result = await runTransaction(claimRef, current => {
+    if (current === null || current === playerId) return playerId;
+    return;
+  });
+  if (!result.committed) throw new Error("That name is already being used in this room. Choose another nickname.");
 }
 async function requireFirebase() {
   if (!firebaseConfigured) throw new Error("Add your Firebase web app settings in firebase.js first.");
@@ -72,6 +83,7 @@ async function createRoom() {
     players: {[playerId]: {name, joinedAt:serverTimestamp(), connected:true}}
   };
   await set(ref(db, `rooms/${code}`), room);
+  await claimName(code, name);
   currentRoom = code; isHost = true;
   await onDisconnect(ref(db, `rooms/${code}/players/${playerId}/connected`)).set(false);
   show("room"); watchRoom(); status("Room created. Share the code with your players.");
@@ -89,6 +101,7 @@ async function joinRoom() {
   const players = Object.keys(room.players || {});
   if (!room.players?.[playerId] && players.length >= MAX_PLAYERS) throw new Error("This room is full (15 players maximum).");
   if (room.game?.phase !== "lobby" && !room.players?.[playerId]) throw new Error("This game has already started.");
+  await claimName(code, name);
   await set(ref(db, `rooms/${code}/players/${playerId}`), {name, joinedAt:serverTimestamp(), connected:true});
   await onDisconnect(ref(db, `rooms/${code}/players/${playerId}/connected`)).set(false);
   currentRoom = code; isHost = room.hostId === playerId;
