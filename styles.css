@@ -14,3 +14,7 @@
 .song-result-details strong{font-size:13px}
 .song-result-details span{font-size:11px;color:var(--muted)}
 .song-result-action{font-size:11px;font-weight:700;color:var(--accent);flex:none}
+
+/* Standalone song search test */
+#test-audio-player{display:block;width:100%;margin:16px 0 8px;accent-color:var(--accent)}
+#song-test .song-results{max-height:300px}
