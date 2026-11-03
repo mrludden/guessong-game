@@ -57,11 +57,10 @@
       </div>
       <div id="host-song-controls" class="settings-card hidden">
         <p class="eyebrow">HOST CONTROLS</p>
-        <label>Song title<input id="song-title" maxlength="160" placeholder="e.g. Anti-Hero"></label>
-        <label>Artist<input id="song-artist" maxlength="120" placeholder="e.g. Taylor Swift"></label>
-        <label>Spotify preview URL<input id="preview-url" type="url" placeholder="https://p.scdn.co/mp3-preview/..."></label>
-        <button id="select-song" class="button secondary full">Check and select song</button>
-        <p class="muted small">Development test only. Paste a preview URL you have access to. Spotify permission for music games has not been established.</p>
+        <label>Search for a song or artist<input id="song-search" maxlength="120" placeholder="e.g. Taylor Swift or Anti-Hero"></label>
+        <button id="search-songs" class="button secondary full">Search songs</button>
+        <div id="song-results" class="song-results" aria-live="polite"></div>
+        <p class="muted small">Search uses Apple’s iTunes music catalog. Results with available 30-second previews can be selected for this prototype.</p>
         <div id="selected-song-card" class="selected-song hidden">
           <span class="muted small">SELECTED SONG</span>
           <strong id="selected-song"></strong>
@@ -81,7 +80,7 @@
       </div>
       <p id="status" class="status" role="status"></p>
     </section>
-    <footer>Guessong development prototype. <a href="https://developer.spotify.com/policy" target="_blank" rel="noopener">Spotify Developer Policy</a></footer>
+    <footer>Guessong development prototype. <a href="https://www.apple.com/legal/internet-services/itunes/" target="_blank" rel="noopener">Apple Media Services Terms</a></footer>
   </main>
   <script type="module" src="app.js"></script>
 </body>
